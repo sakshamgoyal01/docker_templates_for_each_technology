@@ -1,0 +1,255 @@
+version: '3.9'
+
+# -----------------------------------------
+# GLOBAL NETWORKS & VOLUMES
+# -----------------------------------------
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  pgdata:           # PostgreSQL data volume
+  minio-data:       # MinIO file storage
+  redis-data:       # Redis cache
+  logs-data:        # For log persistence (optional)
+
+# -----------------------------------------
+# SERVICES
+# -----------------------------------------
+services:
+
+  # =========================
+  # DATABASE (PostgreSQL)
+  # =========================
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-appdb}
+      POSTGRES_USER: ${POSTGRES_USER:-appuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-supersecret}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - app-network
+
+  # =========================
+  # REDIS (Cache)
+  # =========================
+  redis:
+    image: redis:7.2-alpine
+    container_name: redis
+    restart: always
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - app-network
+
+  # =========================
+  # MINIO (S3-compatible Object Storage)
+  # =========================
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    restart: always
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-admin123}
+    volumes:
+      - minio-data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    networks:
+      - app-network
+
+  # =========================
+  # MICROSERVICES (8 total)
+  # =========================
+
+  # 1️⃣ Authentication Service
+  backend-auth:
+    build: ./microservice-auth
+    container_name: backend-auth
+    environment:
+      DB_HOST: postgres
+      REDIS_HOST: redis
+      JWT_SECRET: ${JWT_SECRET:-supersecretjwt}
+      DB_USER: ${POSTGRES_USER:-appuser}
+      DB_PASS: ${POSTGRES_PASSWORD:-supersecret}
+    depends_on:
+      - postgres
+      - redis
+    ports:
+      - "5001:8080"
+    networks:
+      - app-network
+
+  # 2️⃣ User Service
+  backend-user:
+    build: ./microservice-user
+    container_name: backend-user
+    environment:
+      DB_HOST: postgres
+      DB_USER: ${POSTGRES_USER}
+      DB_PASS: ${POSTGRES_PASSWORD}
+    depends_on:
+      - postgres
+    ports:
+      - "5002:8080"
+    networks:
+      - app-network
+
+  # 3️⃣ Order Service
+  backend-order:
+    build: ./microservice-order
+    container_name: backend-order
+    environment:
+      DB_HOST: postgres
+      DB_USER: ${POSTGRES_USER}
+      DB_PASS: ${POSTGRES_PASSWORD}
+    depends_on:
+      - postgres
+    ports:
+      - "5003:8080"
+    networks:
+      - app-network
+
+  # 4️⃣ Inventory Service
+  backend-inventory:
+    build: ./microservice-inventory
+    container_name: backend-inventory
+    environment:
+      DB_HOST: postgres
+    depends_on:
+      - postgres
+    ports:
+      - "5004:8080"
+    networks:
+      - app-network
+
+  # 5️⃣ Payment Service
+  backend-payment:
+    build: ./microservice-payment
+    container_name: backend-payment
+    environment:
+      DB_HOST: postgres
+    depends_on:
+      - postgres
+    ports:
+      - "5005:8080"
+    networks:
+      - app-network
+
+  # 6️⃣ AI Service (Model Inference)
+  backend-ai:
+    build: ./microservice-ai
+    container_name: backend-ai
+    environment:
+      MODEL_PATH: /models/model.pt
+      STORAGE_URL: http://minio:9000
+      MINIO_USER: ${MINIO_ROOT_USER}
+      MINIO_PASS: ${MINIO_ROOT_PASSWORD}
+    depends_on:
+      - minio
+    ports:
+      - "5006:8080"
+    volumes:
+      - ./microservice-ai/models:/models
+    networks:
+      - app-network
+
+  # 7️⃣ Notification Service
+  backend-notification:
+    build: ./microservice-notification
+    container_name: backend-notification
+    environment:
+      REDIS_HOST: redis
+    depends_on:
+      - redis
+    ports:
+      - "5007:8080"
+    networks:
+      - app-network
+
+  # 8️⃣ Analytics Service
+  backend-analytics:
+    build: ./microservice-analytics
+    container_name: backend-analytics
+    environment:
+      DB_HOST: postgres
+      REDIS_HOST: redis
+    depends_on:
+      - postgres
+      - redis
+    ports:
+      - "5008:8080"
+    networks:
+      - app-network
+
+  # =========================
+  # FRONTEND (React)
+  # =========================
+  frontend:
+    build: ./frontend-react
+    container_name: frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend-auth
+      - backend-user
+      - nginx
+    environment:
+      - REACT_APP_API_URL=http://localhost/api
+    networks:
+      - app-network
+
+  # =========================
+  # API GATEWAY (NGINX)
+  # =========================
+  nginx:
+    build: ./gateway-nginx
+    container_name: nginx
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - frontend
+      - backend-auth
+      - backend-user
+      - backend-order
+    networks:
+      - app-network
+
+  # =========================
+  # MONITORING (Optional)
+  # =========================
+  prometheus:
+    image: prom/prometheus:v3.0.0
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - app-network
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: grafana
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+    depends_on:
+      - prometheus
+    networks:
+      - app-network
