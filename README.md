@@ -40,8 +40,6 @@ docker build -t fastapi-backend:1.0 .
 docker run -d -p 8080:8080 fastapi-backend:1.0
 ```
 
-````
-
 ### ☸️ Deploy to Kubernetes
 
 Each template is **Kubernetes-ready**.
@@ -113,4 +111,7 @@ For example:
        ↓
 [ Monitoring (Prometheus + Grafana) ]
 ```
-````
+
+```
+
+```
