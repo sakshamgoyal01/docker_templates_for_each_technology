@@ -1,18 +1,3 @@
-Perfect 👏 — this is exactly how professionals document reusable DevOps assets.
-
-Let’s create a **clean, industrial-grade `README.md`** for your folder of **Docker templates**, describing what each file does, the tech it’s for, and how to use it.
-
-This README will make your repo look professional and self-explanatory — whether for internal use, open-source, or FAANG-style CI/CD automation.
-
----
-
-# 🧱 Folder: `/docker-templates/`
-
-Here’s your **production-grade `README.md`** 👇
-
----
-
-````markdown
 # 🐳 Docker Templates — Multi-Technology Container Blueprints
 
 This repository provides **ready-to-use Docker templates** for different technologies — designed for production-grade DevOps, CI/CD, and Kubernetes environments.
@@ -54,6 +39,7 @@ cd backend-python-fastapi
 docker build -t fastapi-backend:1.0 .
 docker run -d -p 8080:8080 fastapi-backend:1.0
 ```
+
 ````
 
 ### ☸️ Deploy to Kubernetes
@@ -127,3 +113,4 @@ For example:
        ↓
 [ Monitoring (Prometheus + Grafana) ]
 ```
+````
